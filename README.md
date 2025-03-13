@@ -1,7 +1,3 @@
-Sure, here's a more lively version of your README with some added emojis and a friendlier tone:
-
----
-
 # 🌟 NA Archief Downloader 🌟
 
 Welcome to the **NA Archief Downloader**! 🚀 This Python-powered tool allows you to effortlessly download files from an online archive service 📂. It provides a sleek command-line interface (CLI) that lets you specify which set to fetch and where to save the files. Built with the power of `click`, `requests`, and `lxml`, this project makes downloading from archives a breeze. 😎
@@ -96,7 +92,3 @@ We 💖 contributions from everyone! Have ideas for improvements or bug fixes? A
 ## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 👌
-
----
-
-Hope this adds a bit of fun to your project! Let me know if you want any more tweaks. 😁
