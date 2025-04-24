@@ -113,7 +113,3 @@ We 💖 contributions from everyone! Have ideas for improvements or bug fixes? A
 ## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 👌
-
----
-
-Hope this adds a bit of fun to your project! Let me know if you want any more tweaks. 😁
