@@ -1,3 +1,6 @@
 requests
 lxml
 click
+fpdf
+pillow
+fpdf2

@@ -1,112 +1,27 @@
 import click
 import os
-import requests
-from lxml import etree as ET
-from lxml import html
+
+from fetch import fetchArchiveBlock, fetchDossier, downloadFile
+from parser import getAllDossierHrefs, getAllFileUrls, getDossierHrefByUnitID
+from pdfgen import generatePdfFromImages
+from fpdf import FPDF
 
 
-def formatUrl(set):
-    url = f"https://service.archief.nl/gaf/oai/!open_oai.OAIHandler?verb=ListRecords&set={set}&metadataPrefix=oai_ead"
-    return url
+# Get the absolute path of the directory relative to where the CLI is run
+def createDirectory(directory: str):
+    abs_directory = os.path.abspath(directory)
+
+    click.echo(f"Set version: {set}")
+    click.echo(f"Directory: {abs_directory}")
+
+    if not os.path.exists(abs_directory):
+        click.echo("Directory does not exist, creating...")
+        os.makedirs(abs_directory)
 
 
-def fetchArchiveBlock(set: str) -> str | None:
-    url = formatUrl(set)  # Replace with actual URL
-    click.echo(f"Fetching data from: {url}")
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.content
-    except requests.exceptions.RequestException as e:
-        click.echo(f"Failed to fetch data: {e}", err=True)
-        return None
-
-
-# This function will return a list of all the href's of the dossiers in the archive block
-# This list can then be used to fetch the dossiers
-def getAllDossierHrefs(archiveBlockXml: str | None) -> list[str] | None:
-    if archiveBlockXml is None:
-        return None
-    tree = ET.fromstring(archiveBlockXml)
-    elementsWithHref = tree.xpath("//c[@level='file']/did/dao[@href]")
-    hrefs = []
-    for element in elementsWithHref:
-        href = element.get("href")
-        hrefs.append(href)
-    return hrefs
-
-
-def getAllFileHrefs(dossierXml: str | None, verbose: bool) -> list[str] | None:
-    tree = ET.fromstring(dossierXml)
-
-    namespaces = {"xlink": "http://www.w3.org/1999/xlink"}
-    elements = tree.xpath("//*[@xlink:href]", namespaces=namespaces)
-    hrefs = []
-    for element in elements:
-        href = element.get("{http://www.w3.org/1999/xlink}href")
-        hrefs.append(href)
-    if verbose:
-        click.echo(f"Found files: {hrefs}")
-    return hrefs
-
-
-def extractLink(htmlStr: str):
-    tree = html.fromstring(htmlStr)
-    # Use XPath to extract the value of DEFAULT_URL from the <script> tag
-    default_url = tree.xpath("string(//script[contains(text(), 'DEFAULT_URL')])")
-    import re
-
-    url_match = re.search(r"var DEFAULT_URL = '(https?://[^']+)';", default_url)
-    if url_match:
-        return url_match.group(1)
-
-
-def saveFile(
-    content: bytes, fileUrl: str, dossierUUID: str, directory: str, extension: str
-):
-    fileUUID = fileUrl.split("/")[-1].split("?")[0]
-    with open(f"{directory}/{dossierUUID}_{fileUUID}.{extension}", "wb") as file:
-        file.write(content)
-
-
-def downloadFile(fileUrl: str, dossierUUID: str, directory: str):
-    try:
-
-        response = requests.get(fileUrl)
-        response.raise_for_status()
-        content = response.content
-        # get mimetype and the file extension
-        mimetype = response.headers["Content-Type"]
-        extension = mimetype.split("/")[1]
-        if mimetype == "application/octet-stream":
-            return
-        if mimetype == "text/html":
-            linkUrl = extractLink(response.text)
-            downloadFile(linkUrl, dossierUUID, directory)
-            return
-        saveFile(
-            content=content,
-            fileUrl=fileUrl,
-            dossierUUID=dossierUUID,
-            directory=directory,
-            extension=extension,
-        )
-
-    except requests.exceptions.RequestException as e:
-        click.echo(f"Failed to download file: {e}", err=True)
-
-
-def fetchDossier(href: str | None):
-    if href is None:
-        return None
-    click.echo(f"Fetching dossier with UUID: {href.split('/')[-1]}")
-    try:
-        response = requests.get(href)
-        response.raise_for_status()
-        return response.content
-    except requests.exceptions.RequestException as e:
-        click.echo(f"Failed to fetch data: {e}", err=True)
-        return None
+def limitDossiers(dossiers: list[str], limit: int) -> list[str]:
+    if limit > 0:
+        return dossiers[:limit]
 
 
 @click.command()
@@ -115,6 +30,13 @@ def fetchDossier(href: str | None):
     "set",
     required=True,
     help="The set number to fetch data from, this can be gotten from the Archive block page. it should look something like '2.19.185'",
+)
+@click.option(
+    "--dossier",
+    "dossier",
+    required=False,
+    help="the inventarisnummer of the dossier, this is used to fetch the dossier directly",
+    default=None,
 )
 @click.option(
     "--directory",
@@ -136,40 +58,80 @@ def fetchDossier(href: str | None):
     help="Print verbose output",
     default=False,
 )
-def start(set, directory, limit, verbose):
+def start(
+    set: str | None, directory: str, limit: int, verbose: bool, dossier: str | None
+):
+    if dossier is not None and limit > 0:
+        click.echo("You can only use one of --dossier or --limit", err=True)
+        return
+
+    createDirectory(directory)
     """CLI that makes a call to the set number and saves files to the specified directory."""
-    # Get the absolute path of the directory relative to where the CLI is run
-    abs_directory = os.path.abspath(directory)
 
-    click.echo(f"Set version: {set}")
-    click.echo(f"Directory: {abs_directory}")
-
-    if not os.path.exists(abs_directory):
-        click.echo("Directory does not exist, creating...")
-        os.makedirs(abs_directory)
     block = fetchArchiveBlock(set=set)
     if block is None:
         click.echo("Failed to fetch archive block", err=True)
         return
-    dossiers = getAllDossierHrefs(block)
-    if dossiers is None:
-        click.echo("Failed to get dossiers", err=True)
-        return
-    if limit > 0:
-        dossiers = dossiers[:limit]
+    dossiers: list[str] = []
+    if dossier is None:
+        click.echo(f"Fetching the first {limit} dossiers...")
+        dossiers = getAllDossierHrefs(block)
+        if dossiers is None:
+            click.echo("Failed to get dossiers", err=True)
+            exit(1)
+        dossiers = limitDossiers(dossiers, limit)
+    else:
+        click.echo(f"Fetching dossier with unit ID {dossier}")
+        dossiers = getDossierHrefByUnitID(block, dossier)
+        if dossiers is None:
+            click.echo("Failed to get dossiers", err=True)
+            exit(1)
+    if verbose:
+        click.echo(f"Found {len(dossiers)} dossiers")
+        click.echo(f"dossiers: {dossiers}")
 
+    if len(dossiers) == 0:
+        click.echo("No dossiers found", err=True)
+        exit(1)
     for dossier in dossiers:
-
+        dossierUUID = dossier.split("/")[-1]
         dossierXml = fetchDossier(dossier)
         if dossierXml is None:
             click.echo("Failed to fetch dossier", err=True)
-        files = getAllFileHrefs(dossierXml, verbose=verbose)
-        if files is None:
+
+        file = getAllFileUrls(dossierXml, verbose=verbose)
+
+        if file is None:
             click.echo("Failed to get files", err=True)
             continue
-        for file in files:
+        # split the fileURLS into two parts, the the first part of the array are the images (jpeg, png) and the second part are the rest
+        imageFiles = [
+            file
+            for file in file
+            if file.mimeType is not None and file.mimeType.startswith("image/")
+        ]
+        otherFiles = [
+            file
+            for file in file
+            if file.mimeType is not None and not file.mimeType.startswith("image/")
+        ]
+        if verbose:
+            click.echo(
+                f"Found {len(imageFiles)} images and {len(otherFiles)} other files"
+            )
+        else:
+            click.echo(f"Found {len(file)} files")
+
+        if len(imageFiles) > 0:
+            pdf: FPDF = generatePdfFromImages(
+                imageUrls=[image.url for image in imageFiles],
+            )
+            pdf.output(f"{directory}/{dossierUUID}.pdf", "F")
+        for file in otherFiles:
             downloadFile(
-                directory=directory, fileUrl=file, dossierUUID=dossier.split("/")[-1]
+                directory=directory,
+                fileUrl=[image.url for image in imageFiles],
+                dossierUUID=dossierUUID,
             )
             if verbose:
                 click.echo(f"Downloaded file: {file}")

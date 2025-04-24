@@ -1,7 +1,3 @@
-Sure, here's a more lively version of your README with some added emojis and a friendlier tone:
-
----
-
 # 🌟 NA Archief Downloader 🌟
 
 Welcome to the **NA Archief Downloader**! 🚀 This Python-powered tool allows you to effortlessly download files from an online archive service 📂. It provides a sleek command-line interface (CLI) that lets you specify which set to fetch and where to save the files. Built with the power of `click`, `requests`, and `lxml`, this project makes downloading from archives a breeze. 😎
@@ -23,6 +19,7 @@ Make sure you've got the following:
   - `click`
   - `requests`
   - `lxml`
+  - `fpdf2`
 
 Install all the dependencies like this:
 
@@ -67,6 +64,26 @@ python archief_downloader.py --set <set_number> --directory <path_to_save_files>
 - `--directory`: (Required) Path where the files will be saved 🔽.
 - `--limit`: (Optional) Limit the number of dossiers to download. Default is `0` (no limit).
 - `--verbose`: (Optional) Enable detailed logging. Default is `False`.
+- `--dossier`: (Optional) Specify the `inventarisnummer` of a dossier to fetch it directly. Cannot be used with `--limit`.
+
+#### Enhanced File Handling
+
+- Automatically generates a PDF from image files (e.g., JPEG, PNG) in the dossier.
+- Downloads non-image files separately.
+
+### 🖼️ Example with New Features
+
+To fetch a specific dossier by its `inventarisnummer`:
+
+```bash
+python archief_downloader.py --set 2.19.185 --directory ./downloaded_files --dossier 12345
+```
+
+To generate PDFs from images and download other files with verbose logging:
+
+```bash
+python archief_downloader.py --set 2.19.185 --directory ./downloaded_files --limit 5 --verbose
+```
 
 ### 🚀 Example
 
